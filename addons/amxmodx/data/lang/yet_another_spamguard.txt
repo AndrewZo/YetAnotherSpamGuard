@@ -1,0 +1,40 @@
+[en]
+YASG_CHATGUARD_DETECTED = Your message contains unallowed words.
+YASG_CHATGUARD_DETECTED2 = Probably your cfg contains spam binds.^n^n^nReset settings to defaults?
+YASG_CHATGUARD_YES = Yes
+YASG_CHATGUARD_NO = No, leave server
+YASG_CHATGUARD_KEY = No, I'm sorry
+YASG_CHATGUARD_RULES = Make sure that you write! Last warning.
+
+YASG_NAMEGUARD_DETECTED = Your nickname contains unallowed words.
+YASG_NAMEGUARD_DETECTED2 = Change it?
+YASG_NAMEGUARD_YES = Yes
+YASG_NAMEGUARD_NO = No, leave server
+YASG_NAMEGUARD_KEY = Nope, I'll change nickname by myself
+YASG_NAMEGUARD_RULES = You must change nickname before next check!
+YASG_NAMEGUARD_NAMECHANGED = Your nickname changed to ^"%s^", rename yourself.
+
+YASG_KICK_CHATGUARD = Kicked due to unallowed words in message.
+YASG_KICK_NAMEGUARD = Kicked due to unallowed words in nickname.
+YASG_KICK_NAMEGUARD_NAMESPAM = Kicked due to name change spam.
+
+
+[ru]
+YASG_CHATGUARD_DETECTED = В сообщении обнаружены запрещенные слова.
+YASG_CHATGUARD_DETECTED2 = Вероятно, ваш конфиг содержит спам.^n^n^nВосстановить настройки по умолчанию?
+YASG_CHATGUARD_YES = Да
+YASG_CHATGUARD_NO = Нет, покинуть сервер
+YASG_CHATGUARD_KEY = Нет, извините
+YASG_CHATGUARD_RULES = Следите за тем, что вы пишите! Последнее предупреждение.
+
+YASG_NAMEGUARD_DETECTED = Ваш ник содержит запрещенные слова.
+YASG_NAMEGUARD_DETECTED2 = Сменить ник?
+YASG_NAMEGUARD_YES = Да
+YASG_NAMEGUARD_NO = Нет, покинуть сервер
+YASG_NAMEGUARD_KEY = Нет, сменю ник сам
+YASG_NAMEGUARD_RULES = Необходимо сменить ник до следующей проверки!
+YASG_NAMEGUARD_NAMECHANGED = Ваш ник изменен на ^"%s^", переименуйте себя.
+
+YASG_KICK_CHATGUARD = Кикнут за запрещенные слова в сообщении.
+YASG_KICK_NAMEGUARD = Кикнут за запрещенные слова в нике.
+YASG_KICK_NAMEGUARD_NAMESPAM = Кикнут за спам сменой ника.
