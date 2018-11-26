@@ -1,47 +1,36 @@
 #include <amxmodx>
 #include <amxmisc>
+#include <fakemeta>
 #include <regex>
+#include <reapi>
 
-#define PLUGIN			"Yet Another SpamGuard"
-#define VERSION			"2.1"
-#define AUTHOR			"AndrewZ/voed"
+#define PLUGIN "Yet Another SpamGuard"
+#define VERSION "2.0"
+#define AUTHOR "AndrewZ/voed"
 
-#define MAX_WLMESSAGES		128
-#define MAX_WLNAMES			128
-#define MAX_MESSAGES		128
-#define MAX_NAMES			128
-#define MAX_LONGMESSAGES	10
-#define MAX_NAMECHANGES		4
+#define MSGS_PREFIX "YASG"
 
-#define WLMESSAGES_SIZE		190
-#define WLNAMES_SIZE		32
-#define MESSAGES_SIZE		190
-#define NAMES_SIZE			32
-
-#define MSGS_PREFIX			"YASG"
-
-new g_szRegexPattern[] = "^^[\w\dа-яА-Я\-\'\<\>\{\}\[\]\(\)\*\.\\\?\$\|\/\,\:\;\~\`\@\#\!\&\=\^^\ \і\І\ї\Ї\є\Є\Ё\ё]+$"
-
-new g_WHITELIST_MESSAGES[ MAX_WLMESSAGES ][ WLMESSAGES_SIZE ],
-	g_WHITELIST_NAMES[ MAX_WLNAMES ][ WLNAMES_SIZE ],
-	g_BLOCKED_MESSAGES[ MAX_MESSAGES ][ MESSAGES_SIZE ],
-	g_BLOCKED_NAMES[ MAX_NAMES ][ NAMES_SIZE ]
-
-new bool:g_bChatguardKeyUsed[ 33 ],
-	bool:g_bNameguardKeyUsed[ 33 ]
+#define MAX_LONGMESSAGES 10
+#define MAX_NAMECHANGES 2
 	
-new g_szUserSpamMessages[ 33 ][ MAX_LONGMESSAGES ][ 192 ], 
-	g_szUserLongmessagesCount[ 33 ], 
-	g_szUserNameguardMenuDisplayed[ 33 ],
-	g_szUserNameguardNameChanges[ 33 ]
+new Array:g_szWlMessages,
+	Array:g_szWlNames,
+	Array:g_szRestMessages,
+	Array:g_szRestNames
+
+new bool:g_bChatguardKeyUsed[ MAX_PLAYERS + 1 ],
+	bool:g_bNameguardKeyUsed[ MAX_PLAYERS + 1 ]
+	
+new g_szUserSpamMessages[ MAX_PLAYERS + 1 ][ MAX_LONGMESSAGES ][ 192 ], 
+	g_szUserLongmessagesCount[ MAX_PLAYERS + 1 ], 
+	g_szUserNameguardMenuDisplayed[ MAX_PLAYERS + 1 ],
+	g_szUserNameguardNameChanges[ MAX_PLAYERS + 1 ]
 
 new g_pcvr_ImmunityFlag,
 	g_pcvr_ChatguardMode, g_pcvr_ChatguardRepeatMode, g_pcvr_ChatguardRepeatLen,
 	g_pcvr_NameguardMode, g_pcvr_NameguardName, g_pcvr_NameguardNamespam
 	
 new g_msg_SayText
-
-new g_iMaxPlayers
 
 new bool:g_bSetClientKeyValueBlock
 
@@ -51,7 +40,22 @@ public plugin_init()
 {
 	register_plugin( PLUGIN, VERSION, AUTHOR )
 	
-	register_logevent( "event_round_start", 2, "1=Round_Start" )
+	set_pcvar_string( register_cvar( "yasg_version", VERSION, FCVAR_SPONLY | FCVAR_SERVER ), VERSION )
+
+	g_pcvr_ImmunityFlag = register_cvar( "yasg_immunity_flag", "a" )
+	g_pcvr_ChatguardMode = register_cvar( "yasg_chatguard_mode", "2" )
+	g_pcvr_ChatguardRepeatMode = register_cvar( "yasg_chatguard_repeat_mode", "2" )
+	g_pcvr_ChatguardRepeatLen = register_cvar( "yasg_chatguard_repeat_len", "13" )
+	g_pcvr_NameguardMode = register_cvar( "yasg_nameguard_mode", "2" )
+	g_pcvr_NameguardName = register_cvar( "yasg_nameguard_name", "[YASG] Player" )
+	g_pcvr_NameguardNamespam = register_cvar( "yasg_nameguard_namespam", "1" )
+
+	g_szWlMessages = ArrayCreate( 192, 1 ),
+	g_szWlNames = ArrayCreate( 32, 1 ),
+	g_szRestMessages = ArrayCreate( 192, 1 ),
+	g_szRestNames = ArrayCreate( 32, 1 )
+	
+	register_logevent( "logevent_round_start", 2, "1=Round_Start" )
 	
 	register_forward( FM_SetClientKeyValue, "fwd_setclientkeyvalue" )
 	
@@ -60,91 +64,58 @@ public plugin_init()
 	
 	g_msg_SayText = get_user_msgid( "SayText" )
 	
-	g_iMaxPlayers = get_maxplayers()
-	
-	g_pcvr_ImmunityFlag			= register_cvar( "yasg_immunity_flag", "a" )
-	g_pcvr_ChatguardMode		= register_cvar( "yasg_chatguard_mode", "2" )
-	g_pcvr_ChatguardRepeatMode	= register_cvar( "yasg_chatguard_repeat_mode", "2" )
-	g_pcvr_ChatguardRepeatLen	= register_cvar( "yasg_chatguard_repeat_len", "13" )
-	g_pcvr_NameguardMode		= register_cvar( "yasg_nameguard_mode", "2" )
-	g_pcvr_NameguardName		= register_cvar( "yasg_nameguard_name", "[YASG] Player" )
-	g_pcvr_NameguardNamespam	= register_cvar( "yasg_nameguard_namespam", "1" )
-	
-	register_cvar( "yasg_version", VERSION, FCVAR_SPONLY | FCVAR_SERVER )
-	set_cvar_string( "yasg_version", VERSION )
-	
 	register_dictionary( "yet_another_spamguard.txt" )
-
-	register_menu( "chatguard_menu", -1, "handler_chatguard_menu" )
-	register_menu( "nameguard_menu", -1, "handler_nameguard_menu" )
-
-	set_task( 1.0, "task_read_files" )
 }
 
 public plugin_cfg()
 {
 	get_configsdir( g_szConfigsDir, charsmax( g_szConfigsDir ) )
 	server_cmd( "exec %s/yet_another_spamguard/yasg_config.cfg", g_szConfigsDir )
+
+	write_file_to_array( g_szWlMessages, "yasg_whitelist_messages" )
+	write_file_to_array( g_szWlNames, "yasg_whitelist_names" )
+	write_file_to_array( g_szRestMessages, "yasg_restricted_messages" )
+	write_file_to_array( g_szRestNames, "yasg_restricted_names" )
 }
 
-public task_read_files()
+public write_file_to_array( Array:Array, const szFile[] )
 {
-	new szTemp[ 128 ], i, iFile
+	new szTemp[ 192 ]
+	formatex( szTemp, charsmax( szTemp ), "%s/yet_another_spamguard/%s.ini", g_szConfigsDir, szFile )
 	
-	i = 0
-	formatex( szTemp, charsmax( szTemp ), "%s/yet_another_spamguard/yasg_whitelist_messages.ini", g_szConfigsDir )
-	iFile = fopen( szTemp, "rt" )
+	new iFile = fopen( szTemp, "rt" )
 	
 	if( iFile )
 	{
 		while( !feof( iFile ) )
 		{
-			fgets( iFile, g_WHITELIST_MESSAGES[ i ++ ], WLMESSAGES_SIZE - 1 )
-		}
-	}
-	
-	i = 0
-	formatex( szTemp, charsmax( szTemp ), "%s/yet_another_spamguard/yasg_whitelist_names.ini", g_szConfigsDir )
-	iFile = fopen( szTemp, "rt" )
-	if( iFile )
-	{
-		while( !feof( iFile ) )
-		{
-			fgets( iFile, g_WHITELIST_NAMES[ i ++ ], WLNAMES_SIZE - 1 )
-		}
-	}
-	
-	i = 0
-	formatex( szTemp, charsmax( szTemp ), "%s/yet_another_spamguard/yasg_messages.ini", g_szConfigsDir )
-	iFile = fopen( szTemp, "rt" )
-	if( iFile )
-	{
-		while( !feof( iFile ) )
-		{
-			fgets( iFile, g_BLOCKED_MESSAGES[ i ++ ], MESSAGES_SIZE - 1 )
-		}
-	}
-	
-	i = 0
-	formatex( szTemp, charsmax( szTemp ), "%s/yet_another_spamguard/yasg_names.ini", g_szConfigsDir )
-	iFile = fopen( szTemp, "rt" )
-	if( iFile )
-	{
-		while( !feof( iFile ) )
-		{
-			fgets( iFile, g_BLOCKED_NAMES[ i ++ ], NAMES_SIZE - 1 )
+			fgets( iFile, szTemp, charsmax( szTemp ) )
+			trim( szTemp )
+			ArrayPushString( Array, szTemp )
 		}
 	}
 }
 
-public event_round_start()
+
+
+public logevent_round_start()
 {
+	server_print( "================================" )
+	for( new i; i < ArraySize( g_szRestMessages ); i ++ )
+	{
+		new szTemp[ 64 ];ArrayGetString( g_szRestMessages, i, szTemp, charsmax( szTemp ) )
+		
+		server_print( szTemp )
+		
+	}
+	server_print( "================================" )
+
 	if( !get_pcvar_num( g_pcvr_NameguardMode ) && !get_pcvar_num( g_pcvr_NameguardNamespam ) )
 		return
+
+	arrayset( g_szUserNameguardNameChanges, 0, MAX_PLAYERS )
 	
-	new i
-	
-	for( i = 1; i <= g_iMaxPlayers; i ++ )
+	for( new i = 1; i <= MAX_PLAYERS; i ++ )
 	{
 		g_szUserNameguardNameChanges[ i ] = 0
 		
@@ -180,12 +151,12 @@ public fwd_setclientkeyvalue( id, const sInfobuffer[], const sKey[], const sValu
 		set_task( 1.0, "nameguard_check", id )
 	}
 		
-	if( get_pcvar_num( g_pcvr_NameguardNamespam ) && I_can_do_something( id ) )
+	if( get_pcvar_num( g_pcvr_NameguardNamespam ) && is_user_user( id ) )
 	{	
 		g_szUserNameguardNameChanges[ id ] ++
 		
 		if( g_szUserNameguardNameChanges[ id ] > MAX_NAMECHANGES )
-			kick_user( id, "YASG_KICK_NAMEGUARD_NAMESPAM" )
+			kick_user( id, "YASG_KICK_NAMEGUARD_NAMESPAM" ) // Кикнут за спам сменой ника.
 	}
 	
 	return FMRES_IGNORED
@@ -193,11 +164,11 @@ public fwd_setclientkeyvalue( id, const sInfobuffer[], const sKey[], const sValu
 
 public client_putinserver( id )
 {
-	g_bNameguardKeyUsed[ id ] 		 	= false
-	g_bChatguardKeyUsed[ id ] 		 	= false
-	g_szUserLongmessagesCount[ id ] 		= 0
-	g_szUserNameguardMenuDisplayed[ id ]	= 0
-	g_szUserNameguardNameChanges[ id ]		= 0
+	g_bNameguardKeyUsed[ id ] = false
+	g_bChatguardKeyUsed[ id ] = false
+	g_szUserLongmessagesCount[ id ] = 0
+	g_szUserNameguardMenuDisplayed[ id ] = 0
+	g_szUserNameguardNameChanges[ id ] = 0
 	
 	if( get_pcvar_num( g_pcvr_NameguardMode ) )
 	{
@@ -210,131 +181,78 @@ public client_putinserver( id )
 
 public hook_say( id )
 {
-	static iCvarChatguardMode, iCvarChatguardRepeatMode
+	new i_pCvrCGMode = get_pcvar_num( g_pcvr_ChatguardMode )
+	new i_pCvrCGRepeatMode = get_pcvar_num( g_pcvr_ChatguardRepeatMode )
 	
-	iCvarChatguardMode = get_pcvar_num( g_pcvr_ChatguardMode )
-	iCvarChatguardRepeatMode = get_pcvar_num( g_pcvr_ChatguardRepeatMode )
-	
-	if( ( iCvarChatguardMode || iCvarChatguardRepeatMode ) && I_can_do_something( id ) )
+	if( ( i_pCvrCGMode || i_pCvrCGRepeatMode ) && is_user_user( id ) )
 	{
 		new szInput[ 192 ]
 		read_args( szInput, charsmax( szInput ) )
 		remove_quotes( szInput )
 
-		if( iCvarChatguardMode )
+		if( i_pCvrCGMode )
 		{
-			static i
+			new i, szTemp[ 192 ]
 			
-			for( i = 0; i < sizeof( g_WHITELIST_MESSAGES ); i ++ )
+			for( i = 0; i < ArraySize( g_szRestMessages ); i ++ )
 			{
-				if( containi( szInput, g_WHITELIST_MESSAGES[ i ] ) != -1 )
-					return PLUGIN_CONTINUE
-			}
-			
-			for( i = 0; i < sizeof( g_BLOCKED_MESSAGES ); i ++ )
-			{
-				if( containi( szInput, g_BLOCKED_MESSAGES[ i ] ) != -1 )
-				{
-					switch( iCvarChatguardMode )
-					{
-						case 1: return PLUGIN_HANDLED
-						case 2:
-						{
-							if( !is_user_steam( id ) )
-								chatguard_punish_menu( id, szInput )
+				ArrayGetString( g_szRestMessages, i, szTemp, charsmax( szTemp ) )
 
-							return PLUGIN_HANDLED
-						}
+				if( containi( szInput, szTemp ) != -1 )
+				{
+					for( i = 0; i < ArraySize( g_szWlMessages ); i ++ )
+					{
+						ArrayGetString( g_szWlMessages, i, szTemp, charsmax( szTemp ) )
+
+						if( containi( szInput, szTemp ) != -1 )
+							return PLUGIN_CONTINUE
 					}
 				}
+					
+				switch( i_pCvrCGMode )
+				{
+					case 1:
+					{
+						yasg_print_color( id, "%L", id, "YASG_CHATGUARD_WARN" ) // Ваше сообщение было заблокировано, поскольку содержит недопустимые слова:
+						yasg_print_color( id, "^"%s^"", szInput[ 64 ] ) // %message%
+					}
+					case 2:  kick_user( id, "YASG_CHATGUARD_KICK" )
+				}
+
+				return PLUGIN_HANDLED
 			}
 		}
 
-		if( iCvarChatguardRepeatMode )
+		if( i_pCvrCGRepeatMode && strlen( szInput ) > get_pcvar_num( g_pcvr_ChatguardRepeatLen ) )
 		{
-			if( strlen( szInput ) > get_pcvar_num( g_pcvr_ChatguardRepeatLen ) )
+			for( new i = 0; i < MAX_LONGMESSAGES; i ++ )
 			{
-				static i
-				
-				for( i = 0; i < MAX_LONGMESSAGES; i ++ )
+				if( equali( g_szUserSpamMessages[ id ][ i ], szInput ) )
 				{
-					if( equal( g_szUserSpamMessages[ id ][ i ], szInput ) )
+					if( i_pCvrCGRepeatMode == 2 )
 					{
-						if( iCvarChatguardRepeatMode == 2 )
-						{
-							new szFile[ 256 ], szLog[ 256 ], szName[ 32 ], szAuthID[ 35 ], szIP[ 23 ], iDate[ 3 ] 
-							
-							get_user_name( id, szName, charsmax( szName ) )
-							get_user_authid( id, szAuthID, charsmax( szAuthID ) )
-							get_user_ip( id, szIP, charsmax( szIP ), 1 )
-							date( iDate[ 0 ], iDate[ 1 ], iDate[ 2 ] )
-							
-							format( szLog, charsmax( szLog ), "%s: %s (AuthID:[%s], IP:[%s])", szName, szInput , szAuthID, szIP )
-							format( szFile, charsmax( szFile ), "%s/yet_another_spamguard/logs/LONGMESSAGES%d%d%d.txt", g_szConfigsDir, iDate[ 0 ], iDate[ 1 ], iDate[ 2 ] )
-							
-							log_to_file( szFile, szLog )
-						}
-						
-						return PLUGIN_HANDLED
+						new y, m, d, szTemp[ 32 ]
+						date( y, m, d )
+						formatex( szTemp, charsmax( szTemp ), "YASG_MSG_%d%02d%02d.log", y, m, d ) 
+
+						log_to_file( szTemp, "%N | MESSAGE: %s", id, szInput )
 					}
+					
+					return PLUGIN_HANDLED
 				}
-				
-				if( g_szUserLongmessagesCount[ id ] == MAX_LONGMESSAGES - 1 )
-					g_szUserLongmessagesCount[ id ] = 0
-				
-				g_szUserLongmessagesCount[ id ] ++
-				
-				g_szUserSpamMessages[ id ][ g_szUserLongmessagesCount[ id ] ] = szInput
 			}
+			
+			if( g_szUserLongmessagesCount[ id ] == MAX_LONGMESSAGES - 1 )
+				g_szUserLongmessagesCount[ id ] = 0
+			
+			g_szUserLongmessagesCount[ id ] ++
+			
+			g_szUserSpamMessages[ id ][ g_szUserLongmessagesCount[ id ] ] = szInput
 		}
 	}
 	
 	return PLUGIN_CONTINUE
 }
-
-
-public chatguard_punish_menu( id, szInput[] )
-{
-	new szMenu[ 512 ], iLen, iKeys, szText[ 34 ]
-	iKeys = MENU_KEY_1 + MENU_KEY_2
-	
-	formatex( szText, charsmax( szText ), "%s", szInput )
-
-	iLen = formatex( szMenu, charsmax( szMenu ), "\y%s v%s", PLUGIN, VERSION )
-	
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n^n\y(\d^"%s..^"\y)", szText )
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n\y%L", id, "YASG_CHATGUARD_DETECTED" )
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n%L", id, "YASG_CHATGUARD_DETECTED2" )
-
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n^n\w1. %L", id, "YASG_CHATGUARD_YES" )
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n2. %L", id, "YASG_CHATGUARD_NO" )
-
-	if( !g_bChatguardKeyUsed[ id ] )
-	{
-		iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n3. %L", id, "YASG_CHATGUARD_KEY" )
-		iKeys += MENU_KEY_3
-	}
-
-	show_menu( id, iKeys, szMenu, _, "chatguard_menu" )
-}
-
-public handler_chatguard_menu( id, iKey )
-{
-	iKey ++
-
-	switch( iKey )
-	{
-		case 1: reset_defaults_keys( id )
-		case 2: client_cmd( id, "disconnect" )
-		case 3:
-		{
-			g_bChatguardKeyUsed[ id ] = true
-
-			yasg_print_color( id, "%L", id, "YASG_CHATGUARD_RULES" )
-		}
-	}
-}
-
 
 public show_nameguard_menu( id, szName[] )
 {
@@ -345,15 +263,15 @@ public show_nameguard_menu( id, szName[] )
 	iLen = formatex( szMenu, charsmax( szMenu ), "\y%s v%s", PLUGIN, VERSION )
 	
 	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n^n\y(\d^"%s^"\y)", szName )
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n\y%L", id, "YASG_NAMEGUARD_DETECTED" )
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n^n^n%L", id, "YASG_NAMEGUARD_DETECTED2" )
+	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n\y%L", id, "YASG_NAMEGUARD_DETECTED" ) // Ваш ник содержит запрещенные слова.
+	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n^n^n%L", id, "YASG_NAMEGUARD_DETECTED2" ) // Сменить ник?
 
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n^n\w1. %L", id, "YASG_NAMEGUARD_YES" )
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n2. %L", id, "YASG_NAMEGUARD_NO" )
+	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n^n\w1. %L", id, "YASG_NAMEGUARD_YES" ) // Да
+	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n2. %L", id, "YASG_NAMEGUARD_NO" ) // Нет, покинуть сервер
 	
 	if( !g_bNameguardKeyUsed[ id ] )
 	{
-		iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n3. %L", id, "YASG_NAMEGUARD_KEY" )
+		iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n3. %L", id, "YASG_NAMEGUARD_KEY" ) // Нет, сменю ник сам
 		iKeys += MENU_KEY_3
 	}
 	
@@ -373,36 +291,36 @@ public handler_nameguard_menu( id, iKey )
 		case 3:
 		{
 			g_bNameguardKeyUsed[ id ] = true
-			yasg_print_color( id, "%L", id, "YASG_NAMEGUARD_RULES" )
+			yasg_print_color( id, "%L", id, "YASG_NAMEGUARD_RULES" ) // Необходимо сменить ник до следующей проверки!
 		}
 	}
 }
 
 public nameguard_check( id )
 {
-	if( !I_can_do_something( id ) || !is_user_connected( id ) )
+	if( !is_user_user( id ) )
 		return
 	
 	new szName[ 32 ]
-	get_user_info( id, "szName", szName, charsmax( szName ) )
+	get_user_info( id, "name", szName, charsmax( szName ) )
 	
-	if( valid_name( szName ) )
+	if( is_name_safe( szName ) )
 		return
 
 	switch( get_pcvar_num( g_pcvr_NameguardMode ) )
 	{
-		case 1: kick_user( id, "YASG_KICK_NAMEGUARD" )
+		case 1: kick_user( id, "YASG_KICK_NAMEGUARD" ) // Кикнут за запрещенные слова в нике.
 		case 2:
 		{
 			if( g_bNameguardKeyUsed[ id ] )
-				kick_user( id, "YASG_KICK_NAMEGUARD" )
+				kick_user( id, "YASG_KICK_NAMEGUARD" ) // Кикнут за запрещенные слова в нике.
 			
 			else
 			{
 				if( g_szUserNameguardMenuDisplayed[ id ] < 2 )
 					show_nameguard_menu( id, szName )
 				
-				else kick_user( id, "YASG_KICK_NAMEGUARD" )
+				else kick_user( id, "YASG_KICK_NAMEGUARD" ) // Кикнут за запрещенные слова в нике.
 			}
 		}
 		
@@ -415,176 +333,74 @@ public change_name( id )
 	if( !is_user_connected( id ) )
 			return
 	
-	new szCvarName[ 32 ]
+	new sz_pCvrNGName[ 32 ]
 	
-	get_pcvar_string( g_pcvr_NameguardName, szCvarName, charsmax( szCvarName ) ) 
+	get_pcvar_string( g_pcvr_NameguardName, sz_pCvrNGName, charsmax( sz_pCvrNGName ) ) 
 	set_msg_block( g_msg_SayText, BLOCK_ONCE )
 	g_bSetClientKeyValueBlock = true
-	set_user_info( id, "name", szCvarName )
+	set_user_info( id, "name", sz_pCvrNGName )
 
-	yasg_print_color( id, "%L", id, "YASG_NAMEGUARD_NAMECHANGED", szCvarName )
+	yasg_print_color( id, "%L", id, "YASG_NAMEGUARD_NAMECHANGED", sz_pCvrNGName ) // Ваш ник изменен на ^"%s^", переименуйте себя.
 }
 
-public kick_user( id, sMLReason[] )
+public kick_user( id, szMLReason[] )
 {
 	if( !is_user_connected( id ) )
 			return
 	
-	server_cmd( "kick #%d ^"[YASG] %L^"", get_user_userid( id ), id, sMLReason )
+	server_cmd( "kick #%d ^"[%s] %L^"", get_user_userid( id ), MSGS_PREFIX, id, szMLReason )
 }
 
-public reset_defaults_keys( id )
-{
-	client_cmd( id, "unbindall" )
-	client_cmd( id, "bind ^"TAB^" ^"+showscores^"" )
-	client_cmd( id, "bind ^"ENTER^" ^"+attack^"" )
-	client_cmd( id, "bind ^"ESCAPE^" ^"escape^"" )
-	client_cmd( id, "bind ^"SPACE^" ^"+jump^"" )
-	client_cmd( id, "bind ^"'^" ^"+moveup^"" )
-	client_cmd( id, "bind ^"+^" ^"sizeup^"" )
-	client_cmd( id, "bind ^",^" ^"buyammo1^"" )
-	client_cmd( id, "bind ^"-^" ^"sizedown^"" )
-	client_cmd( id, "bind ^".^" ^"buyammo2^"" )
-	client_cmd( id, "bind ^"/^" ^"+movedown^"" )
-	client_cmd( id, "bind ^"0^" ^"slot10^"" )
-	client_cmd( id, "bind ^"1^" ^"slot1^"" )
-	client_cmd( id, "bind ^"2^" ^"slot2^"" )
-	client_cmd( id, "bind ^"3^" ^"slot3^"" )
-	client_cmd( id, "bind ^"4^" ^"slot4^"" )
-	client_cmd( id, "bind ^"5^" ^"slot5^"" )
-	client_cmd( id, "bind ^"6^" ^"slot6^"" )
-	client_cmd( id, "bind ^"7^" ^"slot7^"" )
-	client_cmd( id, "bind ^"8^" ^"slot8^"" )
-	client_cmd( id, "bind ^"9^" ^"slot9^"" )
-	client_cmd( id, "bind ^";^" ^"+mlook^"" )
-	client_cmd( id, "bind ^"=^" ^"sizeup^"" )
-	client_cmd( id, "bind ^"a^" ^"+moveleft^"" )
-	client_cmd( id, "bind ^"b^" ^"buy^"" )
-	client_cmd( id, "bind ^"c^" ^"radio3^"" )
-	client_cmd( id, "bind ^"d^" ^"+moveright^"" )
-	client_cmd( id, "bind ^"e^" ^"+use^"" )
-	client_cmd( id, "bind ^"f^" ^"impulse 100^"" )
-	client_cmd( id, "bind ^"g^" ^"drop^"" )
-	client_cmd( id, "bind ^"h^" ^"+commandmenu^"" )
-	client_cmd( id, "bind ^"i^" ^"showbriefing^"" )
-	client_cmd( id, "bind ^"j^" ^"cheer^"" )
-	client_cmd( id, "bind ^"k^" ^"+voicerecord^"" )
-	client_cmd( id, "bind ^"m^" ^"chooseteam^"" )
-	client_cmd( id, "bind ^"n^" ^"nightvision^"" )
-	client_cmd( id, "bind ^"o^" ^"buyequip^"" )
-	client_cmd( id, "bind ^"q^" ^"lastinv^"" )
-	client_cmd( id, "bind ^"r^" ^"+reload^"" )
-	client_cmd( id, "bind ^"s^" ^"+back^"" )
-	client_cmd( id, "bind ^"t^" ^"impulse 201^"" )
-	client_cmd( id, "bind ^"u^" ^"messagemode2^"" )
-	client_cmd( id, "bind ^"w^" ^"+forward^"" )
-	client_cmd( id, "bind ^"x^" ^"radio2^"" )
-	client_cmd( id, "bind ^"y^" ^"messagemode^"" )
-	client_cmd( id, "bind ^"z^" ^"radio1^"" )
-	client_cmd( id, "bind ^"[^" ^"invprev^"" )
-	client_cmd( id, "bind ^"]^" ^"invnext^"" )
-	client_cmd( id, "bind ^"`^" ^"toggleconsole^"" )
-	client_cmd( id, "bind ^"~^" ^"toggleconsole^"" )
-	client_cmd( id, "bind ^"UPARROW^" ^"+forward^"" )
-	client_cmd( id, "bind ^"DOWNARROW^" ^"+back^"" )
-	client_cmd( id, "bind ^"LEFTARROW^" ^"+left^"" )
-	client_cmd( id, "bind ^"RIGHTARROW^" ^"+right^"" )
-	client_cmd( id, "bind ^"ALT^" ^"+strafe^"" )
-	client_cmd( id, "bind ^"CTRL^" ^"+duck^"" )
-	client_cmd( id, "bind ^"SHIFT^" ^"+speed^"" )
-	client_cmd( id, "bind ^"F1^" ^"autobuy^"" )
-	client_cmd( id, "bind ^"F2^" ^"rebuy^"" )
-	client_cmd( id, "bind ^"F5^" ^"snapshot^"" )
-	client_cmd( id, "bind ^"F6^" ^"save quick^"" )
-	client_cmd( id, "bind ^"F7^" ^"load quick^"" )
-	client_cmd( id, "bind ^"F10^" ^"quit prompt^"" )
-	client_cmd( id, "bind ^"INS^" ^"+klook^"" )
-	client_cmd( id, "bind ^"PGDN^" ^"+lookdown^"" )
-	client_cmd( id, "bind ^"PGUP^" ^"+lookup^"" )
-	client_cmd( id, "bind ^"END^" ^"centerview^"" )
-	client_cmd( id, "bind ^"MWHEELDOWN^" ^"invnext^"" )
-	client_cmd( id, "bind ^"MWHEELUP^" ^"invprev^"" )
-	client_cmd( id, "bind ^"MOUSE1^" ^"+attack^"" )
-	client_cmd( id, "bind ^"MOUSE2^" ^"+attack2^"" )
-	client_cmd( id, "bind ^"PAUSE^" ^"pause^"" )
-}
-
-stock bool:valid_name( const szInput[] )
+public bool:is_name_safe( const szName[] )
 {	
-	static i, szName[ 32 ], iRet, szError[ 128 ], Regex:iRegexHandle
-	
-	formatex( szName, charsmax( szName ), "%s", szInput )
+	new i, szTemp[ 32 ]
 
-	for( i = 0; i < sizeof( g_WHITELIST_NAMES ); i ++ )
+	client_print( 0, print_chat, "ArraySize RestNames is:%d", ArraySize( g_szRestNames ) )
+
+	for( i = 0; i < ArraySize( g_szWlNames ); i ++ )
 	{
-		if( containi( szName, g_WHITELIST_NAMES[ i ] ) != -1 )
+		ArrayGetString( g_szWlNames, i, szTemp, charsmax( szTemp ) )
+
+		if( containi( szName, szTemp ) != -1 )
 			return true
 	}
 	
-	for( i = 0; i < sizeof( g_BLOCKED_NAMES ); i ++ )
+	for( i = 0; i < ArraySize( g_szRestNames ); i ++ )
 	{
-		if( containi( szName, g_BLOCKED_NAMES[ i ] ) != -1 )
+		ArrayGetString( g_szRestNames, i, szTemp, charsmax( szTemp ) )
+
+		if( containi( szName, szTemp ) != -1 )
 			return false
 	}
 	
-	iRegexHandle = regex_compile_ex( g_szRegexPattern, PCRE_UTF8, szError, charsmax( szError ), iRet )
-
-	if( iRegexHandle != REGEX_PATTERN_FAIL )
-	{
-		switch( regex_match_c( szName, iRegexHandle, iRet ) )
-		{
-			case REGEX_MATCH_FAIL: log_to_file( "[YASG] REGEX MATCH FAILED FOR %s", szName )
-			case REGEX_NO_MATCH: return false
-		}
-		
-		regex_free( iRegexHandle )
-	}
-	
 	return true
 }
 
 
-stock bool:I_can_do_something( id )
+public bool:is_user_user( id )
 {
-	if( is_user_bot( id ) )
+	if( is_user_bot( id ) || is_user_hltv( id ) || !!is_user_connected( id ) ) 
 		return false
 	
-	if( is_user_hltv( id ) ) 
-		return false
+	new szFlags[ 24 ]
+	get_pcvar_string( g_pcvr_ImmunityFlag, szFlags, charsmax( szFlags ) )
 	
-	new szError[ 23 ]
-	
-	get_pcvar_string( g_pcvr_ImmunityFlag, szError, charsmax( szError ) )
-	
-	if( get_user_flags( id ) & read_flags( szError ) )
+	if( get_user_flags( id ) & read_flags( szFlags ) )
 		return false
 	
 	return true
 }
-
-stock bool:is_user_steam( id ) // Sh0oter
-{
-	new iCvarPointer
-	
-	if( iCvarPointer || ( iCvarPointer = get_cvar_pointer( "dp_r_id_provider" ) ) )
-	{
-		server_cmd( "dp_clientinfo %d", id )
-		server_exec()
-		return ( get_pcvar_num( iCvarPointer ) == 2 ) ? true : false
-	}
-	
-	return false
-}
-
 
 stock yasg_print_color( id, szInput[], any:... )
 {
 	new szMessage[ 192 ]
    
 	vformat( szMessage, charsmax( szMessage ), szInput, 3 )
-	format( szMessage, charsmax( szMessage ), "%s %s", MSGS_PREFIX, szMessage )
+	format( szMessage, charsmax( szMessage ), "^1[^4%s^1] %s", MSGS_PREFIX, szMessage )
+
+	replace_all( szMessage, charsmax( szMessage ), "!g", "^4" ) // Green Color
+	replace_all( szMessage, charsmax( szMessage ), "!n", "^1" ) // Default Color
+	replace_all( szMessage, charsmax( szMessage ), "!t", "^3" ) // Team Color
   
 	client_print_color( id, print_team_default, szMessage )
-
-	return 0
 }

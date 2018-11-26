@@ -1,10 +1,6 @@
 [en]
-YASG_CHATGUARD_DETECTED = Your message contains unallowed words.
-YASG_CHATGUARD_DETECTED2 = Probably your cfg contains spam binds.^n^n^nReset settings to defaults?
-YASG_CHATGUARD_YES = Yes
-YASG_CHATGUARD_NO = No, leave server
-YASG_CHATGUARD_KEY = No, I'm sorry
-YASG_CHATGUARD_RULES = Make sure that you write! Last warning.
+YASG_CHATGUARD_WARN = Your message has been blocked due to contain unallowed words:
+YASG_CHATGUARD_KICK = Message contain unallowed words
 
 YASG_NAMEGUARD_DETECTED = Your nickname contains unallowed words.
 YASG_NAMEGUARD_DETECTED2 = Change it?
@@ -20,12 +16,8 @@ YASG_KICK_NAMEGUARD_NAMESPAM = Kicked due to name change spam.
 
 
 [ru]
-YASG_CHATGUARD_DETECTED = В сообщении обнаружены запрещенные слова.
-YASG_CHATGUARD_DETECTED2 = Вероятно, ваш конфиг содержит спам.^n^n^nВосстановить настройки по умолчанию?
-YASG_CHATGUARD_YES = Да
-YASG_CHATGUARD_NO = Нет, покинуть сервер
-YASG_CHATGUARD_KEY = Нет, извините
-YASG_CHATGUARD_RULES = Следите за тем, что вы пишите! Последнее предупреждение.
+YASG_CHATGUARD_WARN = Ваше сообщение было заблокировано, поскольку содержит недопустимые слова:
+YASG_CHATGUARD_KICK = Сообщение содержит запрещенные слова
 
 YASG_NAMEGUARD_DETECTED = Ваш ник содержит запрещенные слова.
 YASG_NAMEGUARD_DETECTED2 = Сменить ник?
