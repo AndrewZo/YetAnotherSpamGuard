@@ -1,406 +1,399 @@
 #include <amxmodx>
 #include <amxmisc>
-#include <fakemeta>
-#include <regex>
 #include <reapi>
 
 #define PLUGIN "Yet Another SpamGuard"
 #define VERSION "2.0"
 #define AUTHOR "AndrewZ/voed"
 
-#define MSGS_PREFIX "YASG"
+#define CHAT_PREFIX "YASG"
 
-#define MAX_LONGMESSAGES 10
+#define MAX_CS_SAYTEXT_LENGTH 192
+#define MAX_LONG_MESSAGES 10
 #define MAX_NAMECHANGES 2
 	
-new Array:g_szWlMessages,
-	Array:g_szWlNames,
-	Array:g_szRestMessages,
-	Array:g_szRestNames
-
-new bool:g_bChatguardKeyUsed[ MAX_PLAYERS + 1 ],
-	bool:g_bNameguardKeyUsed[ MAX_PLAYERS + 1 ]
+new Array:g_apFreeMessages,
+	Array:g_apFreeNames,
+	Array:g_apRestMessages,
+	Array:g_apRestNames,
+	Array:g_apNames
 	
-new g_szUserSpamMessages[ MAX_PLAYERS + 1 ][ MAX_LONGMESSAGES ][ 192 ], 
-	g_szUserLongmessagesCount[ MAX_PLAYERS + 1 ], 
-	g_szUserNameguardMenuDisplayed[ MAX_PLAYERS + 1 ],
-	g_szUserNameguardNameChanges[ MAX_PLAYERS + 1 ]
+new g_szUserSpamMessages[MAX_PLAYERS + 1][MAX_LONG_MESSAGES][MAX_CS_SAYTEXT_LENGTH], 
+	g_szChatguardCount[MAX_PLAYERS + 1], 
+	g_iNameguardChangeCount[MAX_PLAYERS + 1]
 
-new g_pcvr_ImmunityFlag,
-	g_pcvr_ChatguardMode, g_pcvr_ChatguardRepeatMode, g_pcvr_ChatguardRepeatLen,
-	g_pcvr_NameguardMode, g_pcvr_NameguardName, g_pcvr_NameguardNamespam
+new g_pCvarImmunityFlag, g_pCvarChatguard, g_pCvarChatguardRepeat, g_pCvarChatguardRepeatLength,
+	g_pCvarNameguard, g_pCvarNameguardNamespam
+	
+new bool:g_bNameguardMenuDisplayed[MAX_PLAYERS + 1],
+	bool:g_bBlockSayText
 	
 new g_msg_SayText
+new g_szConfigsDir[64]
 
-new bool:g_bSetClientKeyValueBlock
-
-new g_szConfigsDir[ 64 ]
 
 public plugin_init()
 {
-	register_plugin( PLUGIN, VERSION, AUTHOR )
+	register_plugin(PLUGIN, VERSION, AUTHOR)
 	
-	set_pcvar_string( register_cvar( "yasg_version", VERSION, FCVAR_SPONLY | FCVAR_SERVER ), VERSION )
-
-	g_pcvr_ImmunityFlag = register_cvar( "yasg_immunity_flag", "a" )
-	g_pcvr_ChatguardMode = register_cvar( "yasg_chatguard_mode", "2" )
-	g_pcvr_ChatguardRepeatMode = register_cvar( "yasg_chatguard_repeat_mode", "2" )
-	g_pcvr_ChatguardRepeatLen = register_cvar( "yasg_chatguard_repeat_len", "13" )
-	g_pcvr_NameguardMode = register_cvar( "yasg_nameguard_mode", "2" )
-	g_pcvr_NameguardName = register_cvar( "yasg_nameguard_name", "[YASG] Player" )
-	g_pcvr_NameguardNamespam = register_cvar( "yasg_nameguard_namespam", "1" )
-
-	g_szWlMessages = ArrayCreate( 192, 1 ),
-	g_szWlNames = ArrayCreate( 32, 1 ),
-	g_szRestMessages = ArrayCreate( 192, 1 ),
-	g_szRestNames = ArrayCreate( 32, 1 )
+	set_pcvar_string(register_cvar("yasg_version", VERSION, FCVAR_SPONLY | FCVAR_SERVER), VERSION)
+	g_pCvarImmunityFlag = register_cvar("yasg_immunity_flag", "a")
+	g_pCvarChatguard = register_cvar("yasg_chatguard", "2")
+	g_pCvarChatguardRepeat = register_cvar("yasg_chatguard_repeat", "2")
+	g_pCvarChatguardRepeatLength = register_cvar("yasg_chatguard_repeat_length", "13")
+	g_pCvarNameguard = register_cvar("yasg_nameguard", "2")
+	g_pCvarNameguardNamespam = register_cvar("yasg_nameguard_namespam", "1")
 	
-	register_logevent( "logevent_round_start", 2, "1=Round_Start" )
+	register_concmd("yasg_chatguard_addcmd", "concmd_ChatguardAddCmd", ADMIN_RCON, "<command> - add specified command to check for restricted messages.")
 	
-	register_forward( FM_SetClientKeyValue, "fwd_setclientkeyvalue" )
+	RegisterHookChain(RG_CSGameRules_RestartRound, "fwd_RestartRound_pre")
+	RegisterHookChain(RG_CBasePlayer_SetClientUserInfoName, "fwd_SetClientUserInfoName_pre")
 	
-	register_clcmd( "say", "hook_say" )
-	register_clcmd( "say_team", "hook_say" )
+	g_msg_SayText = get_user_msgid("SayText")
 	
-	g_msg_SayText = get_user_msgid( "SayText" )
-	
-	register_dictionary( "yet_another_spamguard.txt" )
+	register_dictionary("yet_another_spamguard.txt")
 }
 
 public plugin_cfg()
 {
-	get_configsdir( g_szConfigsDir, charsmax( g_szConfigsDir ) )
-	server_cmd( "exec %s/yet_another_spamguard/yasg_config.cfg", g_szConfigsDir )
+	get_configsdir(g_szConfigsDir, charsmax(g_szConfigsDir))
+	server_cmd("exec %s/yet_another_spamguard/yasg_config.cfg", g_szConfigsDir)
 
-	write_file_to_array( g_szWlMessages, "yasg_whitelist_messages" )
-	write_file_to_array( g_szWlNames, "yasg_whitelist_names" )
-	write_file_to_array( g_szRestMessages, "yasg_restricted_messages" )
-	write_file_to_array( g_szRestNames, "yasg_restricted_names" )
+	g_apFreeMessages = ArrayWriteFromFile("yasg_free_messages", MAX_CS_SAYTEXT_LENGTH)
+	g_apFreeNames = ArrayWriteFromFile("yasg_free_names", MAX_NAME_LENGTH)
+	g_apRestMessages = ArrayWriteFromFile("yasg_restricted_messages", MAX_CS_SAYTEXT_LENGTH)
+	g_apRestNames = ArrayWriteFromFile("yasg_restricted_names", MAX_NAME_LENGTH)
+	//g_apNames = ArrayWriteFromFile("yasg_names", MAX_NAME_LENGTH)
 }
 
-public write_file_to_array( Array:Array, const szFile[] )
+public Array:ArrayWriteFromFile(const szFile[], const iLen)
 {
-	new szTemp[ 192 ]
-	formatex( szTemp, charsmax( szTemp ), "%s/yet_another_spamguard/%s.ini", g_szConfigsDir, szFile )
+	new Array:apRet = ArrayCreate(iLen, 1)
+
+	new szTemp[MAX_CS_SAYTEXT_LENGTH]
+	formatex(szTemp, charsmax(szTemp), "%s/yet_another_spamguard/%s.ini", g_szConfigsDir, szFile)
 	
-	new iFile = fopen( szTemp, "rt" )
+	new pFile = fopen(szTemp, "rt")
 	
-	if( iFile )
+	if (pFile)
 	{
-		while( !feof( iFile ) )
+		while(!feof(pFile))
 		{
-			fgets( iFile, szTemp, charsmax( szTemp ) )
-			trim( szTemp )
-			ArrayPushString( Array, szTemp )
+			fgets(pFile, szTemp, charsmax(szTemp))
+			trim(szTemp)
+			ArrayPushString(apRet, szTemp)
 		}
 	}
+	
+	fclose(pFile)
+	
+	return apRet
 }
 
 
-
-public logevent_round_start()
+public fwd_RestartRound_pre() 
 {
-	server_print( "================================" )
-	for( new i; i < ArraySize( g_szRestMessages ); i ++ )
-	{
-		new szTemp[ 64 ];ArrayGetString( g_szRestMessages, i, szTemp, charsmax( szTemp ) )
-		
-		server_print( szTemp )
-		
-	}
-	server_print( "================================" )
+	if (!get_pcvar_num(g_pCvarNameguard) && !get_pcvar_num(g_pCvarNameguardNamespam))
+		return HC_CONTINUE
 
-	if( !get_pcvar_num( g_pcvr_NameguardMode ) && !get_pcvar_num( g_pcvr_NameguardNamespam ) )
-		return
-
-	arrayset( g_szUserNameguardNameChanges, 0, MAX_PLAYERS )
+	arrayset(g_iNameguardChangeCount, 0, MAX_PLAYERS + 1)
 	
-	for( new i = 1; i <= MAX_PLAYERS; i ++ )
+	for (new i = 1; i <= MAX_PLAYERS; i ++)
 	{
-		g_szUserNameguardNameChanges[ i ] = 0
-		
-		if( !g_szUserNameguardMenuDisplayed[ i ] )
-			continue
-			
-		if( task_exists( i ) )
-			remove_task( i )
-			
-		set_task( 1.0, "nameguard_check", i )
+		if (g_bNameguardMenuDisplayed[i])	
+			fnNameguardCheck(i)
 	}
+
+	return HC_CONTINUE
 }
 
-public fwd_setclientkeyvalue( id, const sInfobuffer[], const sKey[], const sValue[] )
+public fwd_SetClientUserInfoName_pre(const id, szInfoBuffer[], szNewName[])
 {
-	if( g_bSetClientKeyValueBlock )
+	if (!get_pcvar_num(g_pCvarNameguard))
+		return HC_CONTINUE
+
+	if (g_bBlockSayText)
 	{
-		g_bSetClientKeyValueBlock = false
-		return FMRES_IGNORED
+		set_msg_block(g_msg_SayText, BLOCK_ONCE)
+		g_bBlockSayText = false
 	}
-		
-	if( !is_user_connected( id ) )
-		return FMRES_IGNORED
-		
-	if( !equal( sKey, "name" ) )
-		return FMRES_IGNORED
-	
-	if( get_pcvar_num( g_pcvr_NameguardMode ) )
-	{
-		if( task_exists( id ) )
-			remove_task( id )
-			
-		set_task( 1.0, "nameguard_check", id )
-	}
-		
-	if( get_pcvar_num( g_pcvr_NameguardNamespam ) && is_user_user( id ) )
+	else
 	{	
-		g_szUserNameguardNameChanges[ id ] ++
+		if (!bIsUser(id))
+			return HC_CONTINUE
+
+		fnNameguardCheck(id)
+
+		if (get_pcvar_num(g_pCvarNameguardNamespam))
+		{	
+			g_iNameguardChangeCount[id] ++
+			
+			if (g_iNameguardChangeCount[id] > MAX_NAMECHANGES)
+				fnKickUser(id, "YASG_KICK_NAMEGUARD_NAMESPAM") // Обнаружен спам сменой ника.
+
+			else 
+				fnPrintColor(id, "%L", id, "YASG_NAMEGUARD_NAMESPAM_WARN", MAX_NAMECHANGES) // Предупреждение: На сервере запрещено менять ник чаще %d раз(а) за раунд.
+		}
+	}
+
+	return HC_CONTINUE
+}
+
+public concmd_ChatguardAddCmd(const id, const iAccess, const pCmd)
+{
+	if (!cmd_access(id, iAccess, pCmd, 1))
+		return PLUGIN_HANDLED
+	
+	new szCommand[32]
+	read_args(szCommand, charsmax(szCommand))
+	remove_quotes(szCommand)
+	
+	register_clcmd(szCommand, "fnChatguardCheck")
+
+	return PLUGIN_CONTINUE
+}
+
+public client_putinserver(id)
+{
+	g_bNameguardMenuDisplayed[id] = false
+	g_szChatguardCount[id] = 0
+	g_iNameguardChangeCount[id] = 0
+	
+	if(get_pcvar_num(g_pCvarNameguard))
+		fnNameguardCheck(id)
+}
+
+public fnChatguardCheck(const id)
+{
+	new szInput[MAX_CS_SAYTEXT_LENGTH], iLen
+
+	read_args(szInput, charsmax(szInput))
+	remove_quotes(szInput)
+	iLen = strlen(szInput)
+	
+	if (!iLen || !bIsUser(id))
+		return PLUGIN_CONTINUE
 		
-		if( g_szUserNameguardNameChanges[ id ] > MAX_NAMECHANGES )
-			kick_user( id, "YASG_KICK_NAMEGUARD_NAMESPAM" ) // Кикнут за спам сменой ника.
-	}
-	
-	return FMRES_IGNORED
-}
+	new iCvarChatguard, i
 
-public client_putinserver( id )
-{
-	g_bNameguardKeyUsed[ id ] = false
-	g_bChatguardKeyUsed[ id ] = false
-	g_szUserLongmessagesCount[ id ] = 0
-	g_szUserNameguardMenuDisplayed[ id ] = 0
-	g_szUserNameguardNameChanges[ id ] = 0
+	iCvarChatguard = get_pcvar_num(g_pCvarChatguard)
 	
-	if( get_pcvar_num( g_pcvr_NameguardMode ) )
+	if (iCvarChatguard)
 	{
-		if( task_exists( id ) )
-			remove_task( id )
-			
-		set_task( 3.0, "nameguard_check", id )
-	}
-}
-
-public hook_say( id )
-{
-	new i_pCvrCGMode = get_pcvar_num( g_pcvr_ChatguardMode )
-	new i_pCvrCGRepeatMode = get_pcvar_num( g_pcvr_ChatguardRepeatMode )
-	
-	if( ( i_pCvrCGMode || i_pCvrCGRepeatMode ) && is_user_user( id ) )
-	{
-		new szInput[ 192 ]
-		read_args( szInput, charsmax( szInput ) )
-		remove_quotes( szInput )
-
-		if( i_pCvrCGMode )
+		new szTemp[MAX_CS_SAYTEXT_LENGTH], iSize
+		iSize = ArraySize(g_apFreeMessages)
+		
+		if (iSize)
 		{
-			new i, szTemp[ 192 ]
-			
-			for( i = 0; i < ArraySize( g_szRestMessages ); i ++ )
+			for (i = 0; i < iSize; i ++)
 			{
-				ArrayGetString( g_szRestMessages, i, szTemp, charsmax( szTemp ) )
+				ArrayGetString(g_apFreeMessages, i, szTemp, charsmax(szTemp))
 
-				if( containi( szInput, szTemp ) != -1 )
-				{
-					for( i = 0; i < ArraySize( g_szWlMessages ); i ++ )
-					{
-						ArrayGetString( g_szWlMessages, i, szTemp, charsmax( szTemp ) )
+				if (containi(szInput, szTemp) != -1)
+					return PLUGIN_CONTINUE
+			}
+		}
+		
+		for (i = 0; i < ArraySize(g_apRestMessages); i ++)
+		{
+			ArrayGetString(g_apRestMessages, i, szTemp, charsmax(szTemp))
 
-						if( containi( szInput, szTemp ) != -1 )
-							return PLUGIN_CONTINUE
-					}
-				}
-					
-				switch( i_pCvrCGMode )
+			if (containi(szInput, szTemp) != -1)
+			{
+				if (strlen(szInput) > MAX_CS_SAYTEXT_LENGTH / 2)
+					szInput[MAX_CS_SAYTEXT_LENGTH / 2] = '^0'
+				
+				switch (iCvarChatguard)
 				{
 					case 1:
 					{
-						yasg_print_color( id, "%L", id, "YASG_CHATGUARD_WARN" ) // Ваше сообщение было заблокировано, поскольку содержит недопустимые слова:
-						yasg_print_color( id, "^"%s^"", szInput[ 64 ] ) // %message%
+						fnPrintColor(id, "%L", id, "YASG_CHATGUARD_WARN") // Ваше сообщение было заблокировано, поскольку содержит недопустимые слова:
+						fnPrintColor(id, "^"%s...^"", szInput) // %message%
+						// add sound
 					}
-					case 2:  kick_user( id, "YASG_CHATGUARD_KICK" )
+					case 2: fnKickUser(id, "YASG_CHATGUARD_KICK") // Обнаружены запрещенные слова в сообщении.
 				}
 
 				return PLUGIN_HANDLED
 			}
 		}
+	}
 
-		if( i_pCvrCGRepeatMode && strlen( szInput ) > get_pcvar_num( g_pcvr_ChatguardRepeatLen ) )
+	new iCvarChatguardRepeat = get_pcvar_num(g_pCvarChatguardRepeat) // need rework
+
+	if (iCvarChatguardRepeat && iLen > get_pcvar_num(g_pCvarChatguardRepeatLength))
+	{
+		for (i = 0; i < MAX_LONG_MESSAGES; i ++)
 		{
-			for( new i = 0; i < MAX_LONGMESSAGES; i ++ )
+			if (equali(g_szUserSpamMessages[id][i], szInput))
 			{
-				if( equali( g_szUserSpamMessages[ id ][ i ], szInput ) )
+				if (iCvarChatguardRepeat == 2)
 				{
-					if( i_pCvrCGRepeatMode == 2 )
-					{
-						new y, m, d, szTemp[ 32 ]
-						date( y, m, d )
-						formatex( szTemp, charsmax( szTemp ), "YASG_MSG_%d%02d%02d.log", y, m, d ) 
+					new iDate[3], szLog[256]
+					date(iDate[0], iDate[1], iDate[2]) // y/m/d
+					formatex(szLog, charsmax(szLog), "YASG_MSG_%d%02d%02d.log",  iDate[0], iDate[1], iDate[2]) 
 
-						log_to_file( szTemp, "%N | MESSAGE: %s", id, szInput )
-					}
-					
-					return PLUGIN_HANDLED
+					log_to_file(szLog, "%N | MESSAGE: %s", id, szInput)
 				}
+				
+				return PLUGIN_HANDLED
 			}
-			
-			if( g_szUserLongmessagesCount[ id ] == MAX_LONGMESSAGES - 1 )
-				g_szUserLongmessagesCount[ id ] = 0
-			
-			g_szUserLongmessagesCount[ id ] ++
-			
-			g_szUserSpamMessages[ id ][ g_szUserLongmessagesCount[ id ] ] = szInput
 		}
+		
+		if (g_szChatguardCount[id] == MAX_LONG_MESSAGES - 1)
+			g_szChatguardCount[id] = 0
+		
+		g_szChatguardCount[id] ++
+		
+		g_szUserSpamMessages[id][g_szChatguardCount[id]] = szInput
 	}
 	
 	return PLUGIN_CONTINUE
 }
 
-public show_nameguard_menu( id, szName[] )
+public fnNameguardCheck(const id) // rework
 {
-	new szMenu[ 512 ], iLen, iKeys
-	
-	iKeys = MENU_KEY_1 + MENU_KEY_2
-	
-	iLen = formatex( szMenu, charsmax( szMenu ), "\y%s v%s", PLUGIN, VERSION )
-	
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n^n\y(\d^"%s^"\y)", szName )
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n\y%L", id, "YASG_NAMEGUARD_DETECTED" ) // Ваш ник содержит запрещенные слова.
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n^n^n%L", id, "YASG_NAMEGUARD_DETECTED2" ) // Сменить ник?
+	new iCvarNameguard = get_pcvar_num(g_pCvarNameguard)
 
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n^n\w1. %L", id, "YASG_NAMEGUARD_YES" ) // Да
-	iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n2. %L", id, "YASG_NAMEGUARD_NO" ) // Нет, покинуть сервер
-	
-	if( !g_bNameguardKeyUsed[ id ] )
-	{
-		iLen += formatex( szMenu[ iLen ], charsmax( szMenu ) - iLen, "^n3. %L", id, "YASG_NAMEGUARD_KEY" ) // Нет, сменю ник сам
-		iKeys += MENU_KEY_3
-	}
-	
-	show_menu( id, iKeys, szMenu, _, "nameguard_menu" )
-	
-	g_szUserNameguardMenuDisplayed[ id ] ++
-}
-
-public handler_nameguard_menu( id, iKey )
-{
-	iKey ++
-
-	switch( iKey )
-	{
-		case 1: change_name( id )
-		case 2: client_cmd( id, "disconnect" )
-		case 3:
-		{
-			g_bNameguardKeyUsed[ id ] = true
-			yasg_print_color( id, "%L", id, "YASG_NAMEGUARD_RULES" ) // Необходимо сменить ник до следующей проверки!
-		}
-	}
-}
-
-public nameguard_check( id )
-{
-	if( !is_user_user( id ) )
-		return
-	
-	new szName[ 32 ]
-	get_user_info( id, "name", szName, charsmax( szName ) )
-	
-	if( is_name_safe( szName ) )
+	if (!iCvarNameguard || !bIsUser(id) || bIsNameSafe(id))
 		return
 
-	switch( get_pcvar_num( g_pcvr_NameguardMode ) )
+	switch (get_pcvar_num(g_pCvarNameguard))
 	{
-		case 1: kick_user( id, "YASG_KICK_NAMEGUARD" ) // Кикнут за запрещенные слова в нике.
+		case 1: fnKickUser(id, "YASH_NAMEGUARD_KICK") // Ник содержит запрещенные слова
 		case 2:
 		{
-			if( g_bNameguardKeyUsed[ id ] )
-				kick_user( id, "YASG_KICK_NAMEGUARD" ) // Кикнут за запрещенные слова в нике.
+			if(g_bNameguardMenuDisplayed[id])
+				fnKickUser(id, "YASH_NAMEGUARD_KICK") // Ник содержит запрещенные слова
 			
-			else
-			{
-				if( g_szUserNameguardMenuDisplayed[ id ] < 2 )
-					show_nameguard_menu( id, szName )
-				
-				else kick_user( id, "YASG_KICK_NAMEGUARD" ) // Кикнут за запрещенные слова в нике.
-			}
+			else fnNameguardMenu(id)
 		}
 		
-		case 3: change_name( id )
+		case 3: fnChangeName(id)
 	}
 }
 
-public change_name( id )
+public fnChangeName(const id) // rework
 {
-	if( !is_user_connected( id ) )
+	if (!bIsUser(id))
 			return
 	
-	new sz_pCvrNGName[ 32 ]
-	
-	get_pcvar_string( g_pcvr_NameguardName, sz_pCvrNGName, charsmax( sz_pCvrNGName ) ) 
-	set_msg_block( g_msg_SayText, BLOCK_ONCE )
-	g_bSetClientKeyValueBlock = true
-	set_user_info( id, "name", sz_pCvrNGName )
+	new szNewName[32]
+	ArrayGetString(g_apNames, random_num(0, ArraySize(g_apNames)), szNewName, charsmax(szNewName))
 
-	yasg_print_color( id, "%L", id, "YASG_NAMEGUARD_NAMECHANGED", sz_pCvrNGName ) // Ваш ник изменен на ^"%s^", переименуйте себя.
+	g_bBlockSayText = true
+	set_entvar(id, var_netname, szNewName)
+
+	fnPrintColor(id, "%L", id, "YASG_NAMEGUARD_CHANGED", szNewName) // Ваш ник изменен на ^"%s^".
 }
 
-public kick_user( id, szMLReason[] )
+public fnKickUser(const id, const szReasonML[])
 {
-	if( !is_user_connected( id ) )
+	if (!is_user_connected(id))
 			return
 	
-	server_cmd( "kick #%d ^"[%s] %L^"", get_user_userid( id ), MSGS_PREFIX, id, szMLReason )
+	server_cmd("kick #%d ^"[%s] %L^"", get_user_userid(id), CHAT_PREFIX, id, szReasonML)
 }
 
-public bool:is_name_safe( const szName[] )
+public bool:bIsNameSafe(const id)
 {	
-	new i, szTemp[ 32 ]
-
-	client_print( 0, print_chat, "ArraySize RestNames is:%d", ArraySize( g_szRestNames ) )
-
-	for( i = 0; i < ArraySize( g_szWlNames ); i ++ )
-	{
-		ArrayGetString( g_szWlNames, i, szTemp, charsmax( szTemp ) )
-
-		if( containi( szName, szTemp ) != -1 )
-			return true
-	}
+	new szName[MAX_NAME_LENGTH], szTemp[MAX_NAME_LENGTH], i, iSize
 	
-	for( i = 0; i < ArraySize( g_szRestNames ); i ++ )
-	{
-		ArrayGetString( g_szRestNames, i, szTemp, charsmax( szTemp ) )
+	iSize = ArraySize(g_apFreeNames)
+	get_entvar(id, var_netname, szName, charsmax(szName))
 
-		if( containi( szName, szTemp ) != -1 )
+	if (iSize)
+	{
+		for (i = 0; i < iSize; i ++)
+		{
+			ArrayGetString(g_apFreeNames, i, szTemp, charsmax(szTemp))
+
+			if(containi(szName, szTemp) != -1)
+				return true
+		}
+	}
+
+	for (i = 0; i < ArraySize(g_apRestNames); i ++)
+	{
+		ArrayGetString(g_apRestNames, i, szTemp, charsmax(szTemp))
+
+		if (containi(szName, szTemp) != -1)
 			return false
 	}
 	
 	return true
 }
 
-
-public bool:is_user_user( id )
+public fnNameguardMenu(const id)
 {
-	if( is_user_bot( id ) || is_user_hltv( id ) || !!is_user_connected( id ) ) 
+	static pMenu
+	
+	if (pMenu)
+		menu_display(id, pMenu, 0)
+	
+	else
+	{
+		new szTemp[128]
+		
+		formatex(szTemp, charsmax(szTemp), "%L", id, "YASG_NAMEGUARD_TITLE")
+		pMenu = menu_create(szTemp, "hNameguardMenu")
+		
+		formatex(szTemp, charsmax(szTemp), "%L", id, "YASG_NAMEGUARD_YES")
+		menu_additem(pMenu, szTemp, szTemp, ADMIN_ALL)
+		
+		formatex(szTemp, charsmax(szTemp), "%L", id, "YASG_NAMEGUARD_NO")
+		menu_additem(pMenu, szTemp, szTemp, ADMIN_ALL)
+		
+		formatex(szTemp, charsmax(szTemp), "%L", id, "YASG_NAMEGUARD_SELF")
+		menu_additem(pMenu, szTemp, szTemp, ADMIN_ALL)
+		
+		menu_setprop(pMenu, MPROP_NUMBER_COLOR, "\w")
+		
+		menu_setprop(pMenu, MPROP_EXIT, MEXIT_NEVER)
+		
+		menu_display(id, pMenu, 0)
+	}
+
+	fnPrintColor(id, "%L", id, "YASH_NAMEGUARD_WARN1") // Ваш ник содержит запрещенные слова, необходимо сменить его до следующей проверки.
+	g_bNameguardMenuDisplayed[id] = true
+}
+
+public hNameguardMenu(const id, const pMenu, const iItem)
+{
+	switch (iItem)
+	{
+		case 1: fnChangeName(id)
+		case 2: fnKickUser(id, "YASH_NAMEGUARD_KICK") // Ник содержит запрещенные слова
+		case 3: fnPrintColor(id, "%L", id, "YASH_NAMEGUARD_WARN2") // Необходимо сменить ник до следующей проверки.
+	}
+	
+	return PLUGIN_HANDLED
+}
+
+public bool:bIsUser(const id)
+{
+	if (is_user_bot(id) || is_user_hltv(id) || !is_user_connected(id)) 
 		return false
 	
-	new szFlags[ 24 ]
-	get_pcvar_string( g_pcvr_ImmunityFlag, szFlags, charsmax( szFlags ) )
+	new szFlags[24]
+	get_pcvar_string(g_pCvarImmunityFlag, szFlags, charsmax(szFlags))
 	
-	if( get_user_flags( id ) & read_flags( szFlags ) )
+	if (get_user_flags(id) & read_flags(szFlags))
 		return false
 	
 	return true
 }
 
-stock yasg_print_color( id, szInput[], any:... )
+stock fnPrintColor(const id, const szInput[], any:...)
 {
-	new szMessage[ 192 ]
+	new szMessage[MAX_CS_SAYTEXT_LENGTH]
    
-	vformat( szMessage, charsmax( szMessage ), szInput, 3 )
-	format( szMessage, charsmax( szMessage ), "^1[^4%s^1] %s", MSGS_PREFIX, szMessage )
+	vformat(szMessage, charsmax(szMessage), szInput, 3)
+	format(szMessage, charsmax(szMessage), "^1[^4%s^1] %s", CHAT_PREFIX, szMessage)
 
-	replace_all( szMessage, charsmax( szMessage ), "!g", "^4" ) // Green Color
-	replace_all( szMessage, charsmax( szMessage ), "!n", "^1" ) // Default Color
-	replace_all( szMessage, charsmax( szMessage ), "!t", "^3" ) // Team Color
+	replace_all(szMessage, charsmax(szMessage), "!g", "^4") // Green Color
+	replace_all(szMessage, charsmax(szMessage), "!n", "^1") // Default Color
+	replace_all(szMessage, charsmax(szMessage), "!t", "^3") // Team Color
   
-	client_print_color( id, print_team_default, szMessage )
+	client_print_color(id, print_team_default, szMessage)
 }

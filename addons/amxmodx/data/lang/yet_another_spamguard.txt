@@ -2,31 +2,29 @@
 YASG_CHATGUARD_WARN = Your message has been blocked due to contain unallowed words:
 YASG_CHATGUARD_KICK = Message contain unallowed words
 
-YASG_NAMEGUARD_DETECTED = Your nickname contains unallowed words.
-YASG_NAMEGUARD_DETECTED2 = Change it?
+YASG_NAMEGUARD_TITLE = Your nickname contains unallowed words.^nChange it automatically?
 YASG_NAMEGUARD_YES = Yes
 YASG_NAMEGUARD_NO = No, leave server
-YASG_NAMEGUARD_KEY = Nope, I'll change nickname by myself
-YASG_NAMEGUARD_RULES = You must change nickname before next check!
-YASG_NAMEGUARD_NAMECHANGED = Your nickname changed to ^"%s^", rename yourself.
+YASG_NAMEGUARD_SELF = I will change my nickname
+YASG_NAMEGUARD_CHANGED = Your nickname changed to ^"%s^".
+YASH_NAMEGUARD_WARN1 = Your nickname contains unallowed words, you must change it before the next check.
+YASH_NAMEGUARD_WARN2 = You must change nickname before the next check.
+YASH_NAMEGUARD_KICK = Your nickname contains unallowed words.
 
-YASG_KICK_CHATGUARD = Kicked due to unallowed words in message.
-YASG_KICK_NAMEGUARD = Kicked due to unallowed words in nickname.
-YASG_KICK_NAMEGUARD_NAMESPAM = Kicked due to name change spam.
+YASG_KICK_NAMEGUARD_NAMESPAM = Name change spam detected.
 
 
 [ru]
 YASG_CHATGUARD_WARN = Ваше сообщение было заблокировано, поскольку содержит недопустимые слова:
-YASG_CHATGUARD_KICK = Сообщение содержит запрещенные слова
+YASG_CHATGUARD_KICK = Ваше сообщение содержит запрещенные слова
 
-YASG_NAMEGUARD_DETECTED = Ваш ник содержит запрещенные слова.
-YASG_NAMEGUARD_DETECTED2 = Сменить ник?
+YASG_NAMEGUARD_TITLE = Ваш ник содержит запрещенные слова.^nСменить его автоматически?
 YASG_NAMEGUARD_YES = Да
 YASG_NAMEGUARD_NO = Нет, покинуть сервер
-YASG_NAMEGUARD_KEY = Нет, сменю ник сам
-YASG_NAMEGUARD_RULES = Необходимо сменить ник до следующей проверки!
-YASG_NAMEGUARD_NAMECHANGED = Ваш ник изменен на ^"%s^", переименуйте себя.
+YASG_NAMEGUARD_SELF = Я изменю ник самостоятельно
+YASG_NAMEGUARD_CHANGED = Ваш ник изменен на ^"%s^".
+YASH_NAMEGUARD_WARN1 = Ваш ник содержит запрещенные слова, необходимо сменить его до следующей проверки.
+YASH_NAMEGUARD_WARN2 = Необходимо сменить ник до следующей проверки.
+YASH_NAMEGUARD_KICK = Ваш ник содержит запрещенные слова.
 
-YASG_KICK_CHATGUARD = Кикнут за запрещенные слова в сообщении.
-YASG_KICK_NAMEGUARD = Кикнут за запрещенные слова в нике.
-YASG_KICK_NAMEGUARD_NAMESPAM = Кикнут за спам сменой ника.
+YASG_NAMEGUARD_NAMESPAM_KICK = Обнаружен спам сменой ника.
